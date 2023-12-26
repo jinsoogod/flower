@@ -162,16 +162,15 @@ def _train_one_epoch(
     total_loss
         The Loss that has been trained for one epoch.
     """
-    total_loss = 0.0
-
+    total_loss = []
     for images, labels in trainloader:
         images, labels = images.to(device), labels.to(device)
-        optimizer.zero_grad()
         loss = criterion(net(images), labels)
-        total_loss += loss.item() * labels.size(0)
+        total_loss.append(loss.item())
+        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-    total_loss = total_loss / len(trainloader.dataset)
+    total_loss = sum(total_loss) / len(total_loss)
     return net, total_loss
 
 
@@ -234,19 +233,21 @@ def test(
                 loss.backward()
                 optimizer.step()
 
-    correct, total, loss = 0, 0, 0.0
+    correct, total = 0, 0
+    total_loss = []
     net.eval()
     with torch.no_grad():
         for images, labels in testloader:
             images, labels = images.to(device), labels.to(device)
             outputs = net(images)
-            loss += criterion(outputs, labels).item() * labels.size(0)
+            loss = criterion(outputs, labels)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
+            total_loss.append(loss.item())
     if len(testloader.dataset) == 0:
         raise ValueError("Testloader can't be 0, exiting...")
-    loss /= len(testloader.dataset)
+    loss = sum(total_loss) / len(total_loss)
     accuracy = correct / total
     return loss, accuracy
 
@@ -332,44 +333,41 @@ def _train_meta_one_epoch(
     alpha = [alpha.to(device) for alpha in alpha]
     train_net.train()
     for _ in range(num_adaptation_steps):
-        loss_sum = 0.0
-        sup_num_sample = []
-        sup_total_loss = []
+        # inner loop
         for images, labels in supportloader:
             images, labels = images.to(device), labels.to(device)
-            loss = criterion(train_net(images), labels)
-            loss_sum += loss * labels.size(0)
-            sup_num_sample.append(labels.size(0))
-            sup_total_loss.append(loss * labels.size(0))
-            grads = torch.autograd.grad(
-                loss, list(train_net.parameters()), create_graph=True, retain_graph=True
-            )
-
-            for param, grad_, alphas in zip(train_net.parameters(), grads, alpha):
+            loss_support = criterion(train_net(images), labels)
+            grads_support = torch.autograd.grad(
+                loss_support, list(train_net.parameters()), create_graph=True)
+            for param, grad_, alphas in zip(train_net.parameters(), grads_support, alpha):
                 param.data = param.data - alphas * grad_
-
             for param in train_net.parameters():
                 if param.grad is not None:
                     param.grad.zero_()
 
-    qry_total_loss = []
-    qry_num_sample = []
-    loss_sum = 0.0
+    # outer loop
+    query_loss = []
+    optimizer = torch.optim.Adam(train_net.parameters(), lr=alphas)
     for images, labels in queryloader:
         images, labels = images.to(device), labels.to(device)
-        loss = criterion(train_net(images), labels)
-        loss_sum += loss * labels.size(0)
-        qry_num_sample.append(labels.size(0))
-        qry_total_loss.append(loss.item())
-    loss_sum = loss_sum / sum(qry_num_sample)
-    grads = torch.autograd.grad(loss_sum, list(train_net.parameters()))
+        loss_query = criterion(train_net(images), labels)
+        optimizer.zero_grad()
+        loss_query.backward()
+        grads = [param.grad.cpu().numpy() for param in train_net.parameters() if param.grad is not None]
+        optimizer.step()
 
-    for param in train_net.parameters():
-        if param.grad is not None:
-            param.grad.zero_()
+        # grads_query = torch.autograd.grad(
+        #     loss_query, list(train_net.parameters()), create_graph=False)
+        # for param, grad_, alphas in zip(train_net.parameters(), grads_query, alpha):
+        #     param.data = param.data - alphas * grad_
+        # for param in train_net.parameters():
+        #     if param.grad is not None:
+        #         param.grad.zero_()
 
-    grads = [grad_.cpu().numpy() for grad_ in grads]
-    loss = sum(sup_total_loss) / sum(sup_num_sample)
+        query_loss.append(loss_query.item())
+
+    # grads = [grad_.cpu().numpy() for grad_ in grads_query]
+    loss = sum(query_loss) / len(query_loss)
     return loss, grads
 
 
@@ -409,20 +407,14 @@ def test_meta(
     alpha = [alpha_tensor.to(device) for alpha_tensor in alpha]
     test_net.train()
     for _ in range(num_adaptation_steps):
-        loss_sum = 0.0
-        sup_num_sample = []
-        sup_total_loss = []
+        # inner loop
         for images, labels in supportloader:
             images, labels = images.to(device), labels.to(device)
-            loss = criterion(test_net(images), labels)
-            loss_sum += loss * labels.size(0)
-            sup_num_sample.append(labels.size(0))
-            sup_total_loss.append(loss)
-            grads = torch.autograd.grad(
-                loss, list(test_net.parameters()), create_graph=True, retain_graph=True
-            )
+            loss_support = criterion(test_net(images), labels)
+            grads_support = torch.autograd.grad(
+                loss_support, list(test_net.parameters()), create_graph=True)
 
-            for param, grad_, alphas in zip(test_net.parameters(), grads, alpha):
+            for param, grad_, alphas in zip(test_net.parameters(), grads_support, alpha):
                 param.data -= alphas * grad_
 
             for param in test_net.parameters():
@@ -431,15 +423,17 @@ def test_meta(
 
     test_net.eval()
     correct, total, loss = 0, 0, 0.0
+    query_loss = []
     for images, labels in queryloader:
         images, labels = images.to(device), labels.to(device)
         outputs = test_net(images)
-        loss += criterion(outputs, labels).item() * labels.size(0)
+        loss = criterion(outputs, labels)
         _, predicted = torch.max(outputs.data, 1)
         total += labels.size(0)
         correct += (predicted == labels).sum().item()
+        query_loss.append(loss.item())
     if len(queryloader.dataset) == 0:
         raise ValueError("Testloader can't be 0, exiting...")
-    loss = loss / total
+    loss = sum(query_loss) / len(query_loss)
     accuracy = correct / total
     return loss, accuracy

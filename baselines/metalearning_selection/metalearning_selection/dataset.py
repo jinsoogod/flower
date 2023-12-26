@@ -17,11 +17,11 @@ import torchvision.transforms as transforms
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader, Dataset
 
-from fedmeta.dataset_preparation import (
+from metalearning_selection.dataset_preparation import (
     _partition_data,
     split_train_validation_test_clients,
 )
-from fedmeta.utils import letter_to_vec, word_to_indices
+from metalearning_selection.utils import letter_to_vec, word_to_indices
 
 
 class ShakespeareDataset(Dataset):

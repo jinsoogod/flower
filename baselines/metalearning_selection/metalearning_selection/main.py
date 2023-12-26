@@ -11,11 +11,11 @@ from hydra.core.hydra_config import HydraConfig
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 
-import fedmeta.client as client
-from fedmeta.dataset import load_datasets
-from fedmeta.fedmeta_client_manager import FedmetaClientManager
-from fedmeta.strategy import weighted_average
-from fedmeta.utils import plot_from_pkl, save_graph_params
+import metalearning_selection.client as client
+from metalearning_selection.dataset import load_datasets
+from metalearning_selection.fedmeta_client_manager import FedmetaClientManager
+from metalearning_selection.strategy import weighted_average
+from metalearning_selection.utils import plot_from_pkl, save_graph_params
 
 
 @hydra.main(config_path="conf", config_name="config", version_base=None)

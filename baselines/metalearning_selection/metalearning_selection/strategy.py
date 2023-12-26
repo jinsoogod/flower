@@ -26,8 +26,8 @@ from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import FedAvg
 from flwr.server.strategy.aggregate import aggregate, weighted_loss_avg
 
-from fedmeta.models import FemnistNetwork, StackedLSTM
-from fedmeta.utils import update_ema
+from metalearning_selection.models import FemnistNetwork, StackedLSTM
+from metalearning_selection.utils import update_ema
 
 
 # pylint: disable=too-many-arguments

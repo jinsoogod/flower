@@ -11,7 +11,7 @@ from hydra.utils import instantiate
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
-from fedmeta.models import test, test_meta, train, train_meta
+from metalearning_selection.models import test, test_meta, train, train_meta
 
 
 # pylint: disable=too-many-instance-attributes
